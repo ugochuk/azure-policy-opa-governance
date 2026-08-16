@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   opa-tests:
-    name: OPA Unit Tests
+    name: OPA Unit Tests and Fixture Evaluation
     runs-on: ubuntu-latest
 
     steps:
@@ -25,13 +25,31 @@ jobs:
           sudo mv opa /usr/local/bin/opa
 
       - name: Check Rego Formatting
-        run: opa fmt --fail policies tests
+        run: |
+          unformatted=$(opa fmt --list policies tests)
+          if [[ -n "$unformatted" ]]; then
+            echo "Rego files require formatting:"
+            echo "$unformatted"
+            exit 1
+          fi
 
       - name: Run OPA Tests
         run: opa test policies tests -v
 
-  terraform-policy-gate:
-    name: Terraform Plan Policy Gate
+      - name: Evaluate Compliant Fixture
+        run: |
+          violations=$(opa eval --format=json --data policies --input examples/compliant-plan.json 'data.azure.governance.deny' | jq '.result[0].expressions[0].value | length')
+          echo "Compliant fixture violations: ${violations}"
+          test "${violations}" -eq 0
+
+      - name: Evaluate Noncompliant Fixture
+        run: |
+          violations=$(opa eval --format=json --data policies --input examples/noncompliant-plan.json 'data.azure.governance.deny' | jq '.result[0].expressions[0].value | length')
+          echo "Noncompliant fixture violations: ${violations}"
+          test "${violations}" -gt 0
+
+  terraform-validation:
+    name: Terraform Example Validation
     runs-on: ubuntu-latest
 
     steps:
@@ -43,11 +61,8 @@ jobs:
         with:
           terraform_version: 1.9.8
 
-      - name: Install OPA
-        run: |
-          curl -L -o opa https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static
-          chmod +x opa
-          sudo mv opa /usr/local/bin/opa
+      - name: Terraform Format
+        run: terraform fmt -check -recursive examples
 
       - name: Terraform Init
         working-directory: examples/compliant
@@ -56,21 +71,6 @@ jobs:
       - name: Terraform Validate
         working-directory: examples/compliant
         run: terraform validate
-
-      - name: Generate Terraform Plan
-        working-directory: examples/compliant
-        run: terraform plan -refresh=false -out=tfplan
-
-      - name: Convert Plan to JSON
-        working-directory: examples/compliant
-        run: terraform show -json tfplan > tfplan.json
-
-      - name: Evaluate Plan with OPA
-        run: |
-          result=$(opa eval --format=json --data policies --input examples/compliant/tfplan.json 'data.azure.governance.deny')
-          violations=$(echo "$result" | jq '.result[0].expressions[0].value | length')
-          echo "Policy violations: ${violations}"
-          test "${violations}" -eq 0
 
   azure-policy-validation:
     name: Validate Azure Policy JSON
