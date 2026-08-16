@@ -1,0 +1,84 @@
+name: Policy CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  opa-tests:
+    name: OPA Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install OPA
+        run: |
+          curl -L -o opa https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static
+          chmod +x opa
+          sudo mv opa /usr/local/bin/opa
+
+      - name: Check Rego Formatting
+        run: opa fmt --fail policies tests
+
+      - name: Run OPA Tests
+        run: opa test policies tests -v
+
+  terraform-policy-gate:
+    name: Terraform Plan Policy Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: Install OPA
+        run: |
+          curl -L -o opa https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static
+          chmod +x opa
+          sudo mv opa /usr/local/bin/opa
+
+      - name: Terraform Init
+        working-directory: examples/compliant
+        run: terraform init -backend=false
+
+      - name: Terraform Validate
+        working-directory: examples/compliant
+        run: terraform validate
+
+      - name: Generate Terraform Plan
+        working-directory: examples/compliant
+        run: terraform plan -refresh=false -out=tfplan
+
+      - name: Convert Plan to JSON
+        working-directory: examples/compliant
+        run: terraform show -json tfplan > tfplan.json
+
+      - name: Evaluate Plan with OPA
+        run: |
+          result=$(opa eval --format=json --data policies --input examples/compliant/tfplan.json 'data.azure.governance.deny')
+          violations=$(echo "$result" | jq '.result[0].expressions[0].value | length')
+          echo "Policy violations: ${violations}"
+          test "${violations}" -eq 0
+
+  azure-policy-validation:
+    name: Validate Azure Policy JSON
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate JSON
+        run: jq empty azure-policy/*.json
