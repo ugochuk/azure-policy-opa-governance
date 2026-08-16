@@ -1,0 +1,17 @@
+{
+  "resource_changes": [
+    {
+      "address": "azurerm_storage_account.insecure",
+      "type": "azurerm_storage_account",
+      "change": {
+        "actions": ["create"],
+        "after": {
+          "tags": {},
+          "min_tls_version": "TLS1_0",
+          "allow_nested_items_to_be_public": true,
+          "public_network_access_enabled": true
+        }
+      }
+    }
+  ]
+}
