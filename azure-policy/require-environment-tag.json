@@ -1,0 +1,21 @@
+{
+  "properties": {
+    "displayName": "Require Environment tag",
+    "policyType": "Custom",
+    "mode": "Indexed",
+    "description": "Requires Azure resources to include an Environment tag.",
+    "metadata": {
+      "category": "Governance"
+    },
+    "parameters": {},
+    "policyRule": {
+      "if": {
+        "field": "tags['Environment']",
+        "exists": "false"
+      },
+      "then": {
+        "effect": "deny"
+      }
+    }
+  }
+}
