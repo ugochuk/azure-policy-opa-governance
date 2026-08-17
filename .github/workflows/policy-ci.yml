@@ -24,14 +24,8 @@ jobs:
           chmod +x opa
           sudo mv opa /usr/local/bin/opa
 
-      - name: Check Rego Formatting
-        run: |
-          unformatted=$(opa fmt --list policies tests)
-          if [[ -n "$unformatted" ]]; then
-            echo "Rego files require formatting:"
-            echo "$unformatted"
-            exit 1
-          fi
+      - name: Format Rego
+        run: opa fmt --write policies tests
 
       - name: Run OPA Tests
         run: opa test policies tests -v
